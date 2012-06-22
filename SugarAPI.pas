@@ -2,10 +2,17 @@ unit SugarAPI;
 
 interface
 uses
-  SysUtils, Variants, Classes, Forms, IdHTTP;
+  SysUtils, Variants, Classes, Forms, IdHTTP, idHash, IdHashMessageDigest, superobject;
 
 type
   TStringArray = array of string;
+
+  TRESTError = record
+    Name: string;
+    Number: integer;
+    Description: string;
+    procedure Clear;
+  end;
 
   TSugarServer = class
   private
@@ -13,8 +20,10 @@ type
 
     FRESTUrl,
     FSessionKey: string;
+    FLastError: TRESTError;
 
     function intHTTPPost(AMethod, ARESTData: string): string;
+    function GotException(data: string): boolean;
   public
     constructor Create; overload;
     constructor Create(ARESTUrl: string); overload;
@@ -22,12 +31,14 @@ type
     procedure Clear;
 
     function Login(AUserID, APasswd: string): boolean;
+    function Logout: boolean;
     function GetUserID: int64;
     function GetAvaliableModules: TStringArray;
     function GetModuleFields(AModuleName: string; AFields: TStringArray): TStringArray;
     function GetEntriesCount(AModuleName, AQuery: string; ADeleted: boolean): TStringArray;
 
     property RESTUrl: string read FRESTUrl write FRESTUrl;
+    property LastError: TRESTError read FLastError;
   end;
 
 implementation
@@ -38,6 +49,7 @@ procedure TSugarServer.Clear;
 begin
   FRESTUrl := '';
   FSessionKey := '';
+  FLastError.Clear;
 end;
 
 constructor TSugarServer.Create;
@@ -81,6 +93,14 @@ begin
 
 end;
 
+function TSugarServer.GotException(data: string): boolean;
+begin
+  Result := false;
+
+  FLastError.Clear;
+  FLastError := TSuperRttiContext.Create.AsType(SO(data));
+end;
+
 function TSugarServer.intHTTPPost(AMethod, ARESTData: string): string;
 var
   sl: TStringList;
@@ -96,12 +116,36 @@ end;
 
 function TSugarServer.Login(AUserID, APasswd: string): boolean;
 var
+  md5 : TIdHashMessageDigest5;
   data: string;
 begin
   Result := false;
+  md5 := TIdHashMessageDigest5.Create;
 
   data := intHTTPPost('login',
-    '{"user_auth":{"user_name":"admin", "password":"21232f297a57a5a743894a0e4a801fc3", "version":"1.2"}, "application":"delphi REST API"}');
+    '{"user_auth":{"user_name":"' + AUserID + '", ' +
+      '"password":"' + md5.HashStringAsHex(APasswd) + 'y", "version":"1.2"}, ' +
+    '"application":"delphi REST API"}');
+
+  if GotException(data) then exit;
+
+
+  md5.Free;
+end;
+
+function TSugarServer.Logout: boolean;
+begin
+  Result := false;
+
+end;
+
+{ TRESTError }
+
+procedure TRESTError.Clear;
+begin
+  Name := '';
+  Number := 0;
+  Description := '';
 end;
 
 end.
